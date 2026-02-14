@@ -2,36 +2,49 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Kurupey - Cosmic Garden & Time Machine</title>
+    <title>Kurupey Final Fix - Skeleton & Cosmic</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
         #ui-layer { position: absolute; top: 20px; left: 20px; color: white; z-index: 100; pointer-events: none; }
-        #status-bar { color: #00ffcc; font-family: monospace; background: rgba(0,0,0,0.5); padding: 5px; border-radius: 4px; }
-        #debug-box { position: absolute; bottom: 20px; right: 20px; width: 240px; height: 180px; border: 2px solid #00ffcc; border-radius: 12px; overflow: hidden; z-index: 200; background: #111; }
+        #status-bar { color: #00ffcc; font-family: monospace; background: rgba(0,0,0,0.6); padding: 8px; border-radius: 4px; }
+        
+        /* Debug Box with Skeleton */
+        #debug-box { 
+            position: absolute; bottom: 20px; right: 20px; 
+            width: 300px; height: 225px; 
+            border: 2px solid #00ffcc; border-radius: 12px; 
+            overflow: hidden; z-index: 200; background: #111;
+        }
         #input_video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-        #sketch_canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); }
+        #sketch_canvas { 
+            position: absolute; top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            transform: scaleX(-1); 
+            z-index: 201; /* Ensure skeleton is on top */
+        }
+        
         #btn-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 300; }
-        button { padding: 20px 50px; font-size: 1.2rem; cursor: pointer; background: #00ffcc; border: none; border-radius: 50px; font-weight: bold; box-shadow: 0 0 20px #00ffcc; }
+        button { padding: 20px 50px; font-size: 1.5rem; cursor: pointer; background: #00ffcc; border: none; border-radius: 50px; font-weight: bold; box-shadow: 0 0 25px #00ffcc; }
     </style>
 </head>
 <body>
 
 <div id="ui-layer">
     <h1>Cosmic Garden & Time</h1>
-    <div id="status-bar">STATUS: SYSTEM READY</div>
-    <p>2: Yggdrasil | 3: Rose Bloom | 4: Möbius Strip | Fist: Sphere</p>
+    <div id="status-bar">SYSTEM STATUS: READY</div>
+    <p>2: Yggdrasil | 3: Rose Bloom | 4: Mobius | Fist: Sphere</p>
 </div>
 
-<div id="btn-container"><button id="startBtn">INITIALIZE ENGINE</button></div>
+<div id="btn-container"><button id="startBtn">START ENGINE</button></div>
 
 <div id="debug-box">
     <video id="input_video" playsinline></video>
     <canvas id="sketch_canvas"></canvas>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 
 <script>
@@ -40,8 +53,8 @@
     let mode = 'scatter';
     let roseGrowth = 0;
     let globalTime = 0;
-    
-    // --- Scene ---
+
+    // --- 1. Three.js Setup ---
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -59,56 +72,40 @@
     const points = new THREE.Points(geometry, new THREE.PointsMaterial({ size: 0.2, vertexColors: true, blending: THREE.AdditiveBlending }));
     scene.add(points);
 
-    // --- Möbius Strip / Temporal Loom (4 Fingers) ---
+    // --- 2. Shape Functions ---
     function setMobius() {
         for(let i=0; i<PARTICLE_COUNT; i++) {
             const t = (i / PARTICLE_COUNT) * Math.PI * 2;
-            const a = 25; // Scale
-            // Infinity / Mobius Math
-            const x = a * Math.cos(t) / (1 + Math.pow(Math.sin(t), 2));
-            const y = a * Math.sin(t) * Math.cos(t) / (1 + Math.pow(Math.sin(t), 2));
-            const z = Math.sin(globalTime + t * 5) * 2; // Subtle 3D twist
-
-            tar[i*3] = x; tar[i*3+1] = y; tar[i*3+2] = z;
-            col[i*3] = 0.2; col[i*3+1] = 0.6; col[i*3+2] = 1.0; // Stark Blue
+            const x = 25 * Math.cos(t) / (1 + Math.pow(Math.sin(t), 2));
+            const y = 25 * Math.sin(t) * Math.cos(t) / (1 + Math.pow(Math.sin(t), 2));
+            tar[i*3] = x; tar[i*3+1] = y; tar[i*3+2] = Math.sin(t*5)*3;
+            col[i*3]=0.2; col[i*3+1]=0.6; col[i*3+2]=1;
         }
     }
 
-    // --- Rose Logic (3 Fingers) ---
     function setRose(growth) {
         for(let i=0; i<PARTICLE_COUNT; i++) {
             const t = i / PARTICLE_COUNT;
             const angle = 18 * Math.PI * t; 
             const radius = (25 * growth) * Math.sqrt(t); 
-            const bloomHeight = (Math.pow(t, 2) * 18) * growth;
-            
             tar[i*3] = Math.cos(angle) * radius;
-            tar[i*3+1] = bloomHeight - 10; 
+            tar[i*3+1] = (Math.pow(t, 2) * 18) * growth - 10; 
             tar[i*3+2] = Math.sin(angle) * radius;
-            
-            col[i*3] = 0.5 + (growth * 0.5 * t); col[i*3+1] = t * 0.1; col[i*3+2] = t * 0.2;
+            col[i*3] = 0.5 + (growth * 0.5); col[i*3+1] = t * 0.1; col[i*3+2] = t * 0.2;
         }
     }
 
-    // --- Yggdrasil Logic (2 Fingers) ---
     function setYggdrasil() {
         for(let i=0; i<PARTICLE_COUNT; i++) {
             const seed = Math.random();
-            let x, y, z, r, g, b;
             if (seed < 0.2) { // Trunk
-                x = (Math.random()-0.5)*2; y = (Math.random()-0.5)*40; z = (Math.random()-0.5)*2;
-                r=0.1; g=0.5; b=0.2;
-            } else if (seed < 0.7) { // Branches
-                const ang = Math.random()*Math.PI*2; const h = Math.random()*35;
-                x = Math.cos(ang)*h*0.7; y = h+5; z = Math.sin(ang)*h*0.7;
-                r=0.2; g=0.9; b=0.4;
-            } else { // Roots
-                const ang = Math.random()*Math.PI*2; const d = Math.random()*20;
-                x = Math.cos(ang)*d*0.8; y = -d-15; z = Math.sin(ang)*d*0.8;
-                r=0.0; g=0.3; b=0.7;
+                tar[i*3]=(Math.random()-0.5)*2; tar[i*3+1]=(Math.random()-0.5)*40; tar[i*3+2]=(Math.random()-0.5)*2;
+                col[i*3]=0.1; col[i*3+1]=0.5; col[i*3+2]=0.2;
+            } else { // Branches/Roots
+                const ang = Math.random()*Math.PI*2; const h = (Math.random()-0.5)*50;
+                tar[i*3]=Math.cos(ang)*Math.abs(h)*0.7; tar[i*3+1]=h; tar[i*3+2]=Math.sin(ang)*Math.abs(h)*0.7;
+                col[i*3]=0.2; col[i*3+1]=0.9; col[i*3+2]=0.4;
             }
-            tar[i*3]=x; tar[i*3+1]=y; tar[i*3+2]=z;
-            col[i*3]=r; col[i*3+1]=g; col[i*3+2]=b;
         }
     }
 
@@ -130,47 +127,48 @@
         }
     }
 
-    // --- Hands ---
+    setScatter();
+
+    // --- 3. Hand Tracking (Refined) ---
     const videoElement = document.getElementById('input_video');
     const canvasElement = document.getElementById('sketch_canvas');
     const canvasCtx = canvasElement.getContext('2d');
-    const hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
-    hands.setOptions({ maxNumHands: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
 
-    hands.onResults((res) => {
+    const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+    hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+
+    hands.onResults((results) => {
+        // Clear and match canvas size to video
         canvasElement.width = videoElement.videoWidth;
         canvasElement.height = videoElement.videoHeight;
         canvasCtx.save();
         canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
         
-        if (res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
-            status.innerText = "STATUS: ANOMALY DETECTED";
-            const lm = res.multiHandLandmarks[0];
-            drawConnectors(canvasCtx, lm, HAND_CONNECTIONS, {color: '#00ffcc', lineWidth: 4});
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+            status.innerText = "SYSTEM STATUS: HAND DETECTED";
+            const landmarks = results.multiHandLandmarks[0];
             
-            const up = [8, 12, 16, 20].filter(id => lm[id].y < lm[id-2].y).length;
-            const fist = lm[8].y > lm[5].y && lm[12].y > lm[9].y;
+            // DRAW SKELETON
+            window.drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FFCC', lineWidth: 5});
+            window.drawLandmarks(canvasCtx, landmarks, {color: '#FF0055', lineWidth: 2, radius: 4});
 
-            if (fist) { mode='sphere'; setSphere(); roseGrowth=0; }
-            else if (up === 4) { mode='mobius'; setMobius(); roseGrowth=0; }
-            else if (up === 3) { mode='rose'; }
-            else if (up === 2) { mode='tree'; setYggdrasil(); roseGrowth=0; }
-            else { mode='scatter'; setScatter(); roseGrowth=0; }
+            // GESTURE LOGIC
+            const up = [8, 12, 16, 20].filter(id => landmarks[id].y < landmarks[id-2].y).length;
+            const fist = landmarks[8].y > landmarks[5].y && landmarks[12].y > landmarks[9].y;
+
+            if (fist) { if(mode!='sphere'){ mode='sphere'; setSphere(); roseGrowth=0; } }
+            else if (up === 4) { if(mode!='mobius'){ mode='mobius'; setMobius(); roseGrowth=0; } }
+            else if (up === 3) { if(mode!='rose'){ mode='rose'; } }
+            else if (up === 2) { if(mode!='tree'){ mode='tree'; setYggdrasil(); roseGrowth=0; } }
+            else { if(mode!='scatter'){ mode='scatter'; setScatter(); roseGrowth=0; } }
         } else {
-            status.innerText = "STATUS: SCANNING...";
-            mode='scatter'; setScatter(); roseGrowth=0;
+            status.innerText = "SYSTEM STATUS: SEARCHING...";
+            if(mode!='scatter'){ mode='scatter'; setScatter(); roseGrowth=0; }
         }
         canvasCtx.restore();
     });
 
-    document.getElementById('startBtn').onclick = () => {
-        const cam = new Camera(videoElement, {
-            onFrame: async () => { await hands.send({image: videoElement}); },
-            width: 640, height: 480
-        });
-        cam.start().then(() => document.getElementById('btn-container').style.display='none');
-    };
-
+    // --- 4. Animation Loop ---
     function animate() {
         requestAnimationFrame(animate);
         const pArr = geometry.attributes.position.array;
@@ -184,25 +182,32 @@
 
         for(let i=0; i<PARTICLE_COUNT; i++) {
             const i3 = i * 3;
-            // Soft Wind Effect (Sine waves based on Y position)
-            const windX = Math.sin(globalTime + tar[i3+1] * 0.1) * 0.8;
-            const windZ = Math.cos(globalTime * 0.8 + tar[i3+1] * 0.1) * 0.8;
-            
-            pArr[i3] += (tar[i3] + windX - pArr[i3]) * 0.1;
-            pArr[i3+1] += (tar[i3+1] - pArr[i3+1]) * 0.1;
-            pArr[i3+2] += (tar[i3+2] + windZ - pArr[i3+2]) * 0.1;
-
+            // Wind Effect
+            const wind = Math.sin(globalTime + tar[i3+1] * 0.1) * 0.8;
+            pArr[i3] += (tar[i3] + wind - pArr[i3]) * 0.12;
+            pArr[i3+1] += (tar[i3+1] - pArr[i3+1]) * 0.12;
+            pArr[i3+2] += (tar[i3+2] - pArr[i3+2]) * 0.12;
             cArr[i3] += (col[i3] - cArr[i3]) * 0.08;
             cArr[i3+1] += (col[i3+1] - cArr[i3+1]) * 0.08;
             cArr[i3+2] += (col[i3+2] - cArr[i3+2]) * 0.08;
         }
-        
         geometry.attributes.position.needsUpdate = true;
         geometry.attributes.color.needsUpdate = true;
-        
         points.rotation.y += 0.003;
         renderer.render(scene, camera);
     }
+
+    document.getElementById('startBtn').onclick = () => {
+        const cameraObj = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({image: videoElement}); },
+            width: 640, height: 480
+        });
+        cameraObj.start().then(() => {
+            document.getElementById('btn-container').style.display='none';
+            status.innerText = "SYSTEM STATUS: CAMERA ACTIVE";
+        });
+    };
+
     animate();
 </script>
 </body>

@@ -2,25 +2,24 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Fluid Surface Simulation</title>
+    <title>Ice & Fire Shifter</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
-        #input_video { position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); z-index: 1; }
+        #input_video { position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); z-index: 1; opacity: 0.6; }
         #sketch_canvas { position: absolute; width: 100%; height: 100%; top: 0; left: 0; transform: scaleX(-1); z-index: 2; }
         #three_canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
-        #ui-layer { position: absolute; top: 20px; left: 20px; color: #00ffcc; z-index: 100; font-family: 'Courier New', monospace; }
+        #ui-layer { position: absolute; top: 20px; left: 20px; color: #fff; z-index: 100; font-family: 'Segoe UI', sans-serif; text-transform: uppercase; letter-spacing: 2px; }
         #btn-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 300; }
-        button { padding: 20px 50px; font-size: 1.2rem; cursor: pointer; background: #00ffcc; border: none; font-weight: bold; border-radius: 5px; }
+        button { padding: 20px 50px; font-size: 1.2rem; cursor: pointer; background: #fff; border: none; font-weight: bold; box-shadow: 0 0 20px rgba(255,255,255,0.5); }
     </style>
 </head>
 <body>
 
 <div id="ui-layer">
-    <h1>FLUID_LINK_V6</h1>
-    <div id="status">STATUS: CALIBRATING...</div>
+    <h1 id="mode-text">ELEMENTAL_LINK: STANDBY</h1>
 </div>
 
-<div id="btn-container"><button id="startBtn">START FLUID LINK</button></div>
+<div id="btn-container"><button id="startBtn">IGNITE SYSTEM</button></div>
 <video id="input_video" playsinline></video>
 <canvas id="sketch_canvas"></canvas>
 
@@ -30,131 +29,154 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 
 <script>
-    const PARTICLE_COUNT = 4500; // Lower count with higher cohesion looks more like liquid
-    const BOX_SIZE = 6; // Very small cube
-    const GRAVITY = -0.08;
-    const COHESION = 0.02; // This makes them act like water
-    const FRICTION = 0.96;
+    const PARTICLE_COUNT = 8000;
+    let currentMode = "ICE"; // "ICE" or "FIRE"
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-    camera.position.z = 20;
+    camera.position.z = 30;
     
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.domElement.id = "three_canvas";
     document.body.appendChild(renderer.domElement);
 
-    const tankGroup = new THREE.Group();
-    scene.add(tankGroup);
+    // --- OBJECTS ---
+    const spellGroup = new THREE.Group();
+    scene.add(spellGroup);
 
-    // Box Visual
-    const boxMesh = new THREE.LineSegments(
-        new THREE.EdgesGeometry(new THREE.BoxGeometry(BOX_SIZE, BOX_SIZE, BOX_SIZE)),
-        new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.5 })
-    );
-    tankGroup.add(boxMesh);
+    // Ice Crystal (Octahedron)
+    const crystalGeo = new THREE.OctahedronGeometry(4, 0);
+    const crystalMat = new THREE.MeshPhongMaterial({ 
+        color: 0x00ccff, transparent: true, opacity: 0.6, shininess: 100, flatShading: true 
+    });
+    const crystal = new THREE.Mesh(crystalGeo, crystalMat);
+    
+    // Black Hole Core
+    const coreGeo = new THREE.SphereGeometry(1.5, 32, 32);
+    const coreMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    const core = new THREE.Mesh(coreGeo, coreMat);
+    
+    spellGroup.add(crystal);
+    spellGroup.add(core);
 
-    // Liquid Visual
+    // Light for Crystal
+    const light = new THREE.PointLight(0x00ffff, 2, 50);
+    scene.add(light);
+
+    // Particles
     const geometry = new THREE.BufferGeometry();
     const pos = new Float32Array(PARTICLE_COUNT * 3);
     const vel = new Float32Array(PARTICLE_COUNT * 3);
+    const colors = new Float32Array(PARTICLE_COUNT * 3);
 
     for(let i=0; i<PARTICLE_COUNT; i++) {
-        pos[i*3] = (Math.random()-0.5) * BOX_SIZE;
-        pos[i*3+1] = (Math.random()-0.5) * BOX_SIZE;
-        pos[i*3+2] = (Math.random()-0.5) * BOX_SIZE;
+        pos[i*3] = (Math.random()-0.5) * 10;
+        pos[i*3+1] = (Math.random()-0.5) * 10;
+        pos[i*3+2] = (Math.random()-0.5) * 10;
     }
 
     geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     
-    // Texture for "Blurry/Fluid" particles
     const sprite = new THREE.TextureLoader().load('https://threejs.org/examples/textures/sprites/disc.png');
-    const material = new THREE.PointsMaterial({ 
-        size: 0.5, 
-        color: 0x00d4ff, 
-        map: sprite, 
-        transparent: true, 
-        alphaTest: 0.01, 
-        blending: THREE.AdditiveBlending 
-    });
-    
-    const liquid = new THREE.Points(geometry, material);
-    tankGroup.add(liquid);
+    const pMaterial = new THREE.PointsMaterial({ size: 0.3, vertexColors: true, map: sprite, transparent: true, blending: THREE.AdditiveBlending });
+    const particles = new THREE.Points(geometry, pMaterial);
+    scene.add(particles);
 
-    // Tracking
+    // --- TRACKING ---
     const video = document.getElementById('input_video');
     const canvas = document.getElementById('sketch_canvas');
     const ctx = canvas.getContext('2d');
     let targetPos = new THREE.Vector3(0, 0, 0);
-    let lastTankPos = new THREE.Vector3(0, 0, 0);
 
     const hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
-    hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.8, minTrackingConfidence: 0.8 });
+    hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
 
     hands.onResults((res) => {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
         if (res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
             const lm = res.multiHandLandmarks[0];
-            drawConnectors(ctx, lm, HAND_CONNECTIONS, {color: '#00FFCC', lineWidth: 4});
+            drawConnectors(ctx, lm, HAND_CONNECTIONS, {color: '#fff', lineWidth: 2});
+
+            // GESTURE LOGIC
+            // Count extended fingers (simple threshold)
+            let extended = 0;
+            const tips = [8, 12, 16, 20]; // index, middle, ring, pinky
+            tips.forEach(t => { if(lm[t].y < lm[t-2].y) extended++; });
+            if(lm[4].x > lm[3].x) extended++; // thumb
+
+            if (extended <= 2) {
+                currentMode = "ICE";
+                const tip = lm[8]; // Move with Index
+                targetPos.set((tip.x - 0.5) * -45, (tip.y - 0.5) * -35, (tip.z * -40));
+            } else {
+                currentMode = "FIRE";
+                const palm = lm[9]; // Move with Palm
+                targetPos.set((palm.x - 0.5) * -45, (palm.y - 0.5) * -35, (palm.z * -40));
+            }
             
-            const palm = lm[9]; // Hand center
-            targetPos.set((palm.x - 0.5) * -30, (palm.y - 0.5) * -20, (palm.z * -30));
-            document.getElementById('status').innerText = "STATUS: HAND LOCKED";
+            document.getElementById('mode-text').innerText = `MODE: ${currentMode}`;
+            document.getElementById('mode-text').style.color = currentMode === "ICE" ? "#00ccff" : "#ff4400";
         }
     });
 
     function animate() {
         requestAnimationFrame(animate);
+        spellGroup.position.lerp(targetPos, 0.2);
+        light.position.copy(spellGroup.position);
         
-        tankGroup.position.lerp(targetPos, 0.2);
-        const deltaMove = new THREE.Vector3().subVectors(tankGroup.position, lastTankPos);
-        lastTankPos.copy(tankGroup.position);
-
         const pArr = geometry.attributes.position.array;
-        const h = BOX_SIZE / 2;
+        const cArr = geometry.attributes.color.array;
+
+        if (currentMode === "ICE") {
+            crystal.visible = true; core.visible = true;
+            crystal.rotation.y += 0.05;
+            crystal.scale.lerp(new THREE.Vector3(1,1,1), 0.1);
+        } else {
+            crystal.visible = false; core.visible = false;
+        }
 
         for(let i=0; i<PARTICLE_COUNT; i++) {
             const ix = i*3, iy = i*3+1, iz = i*3+2;
-
-            // Gravity
-            vel[iy] += GRAVITY;
-
-            // Slosh Force (Inertia)
-            vel[ix] -= deltaMove.x * 0.5;
-            vel[iy] -= deltaMove.y * 0.5;
-            vel[iz] -= deltaMove.z * 0.5;
-
-            // Simple Cohesion (Pull toward center of mass slightly)
-            vel[ix] -= pArr[ix] * COHESION;
-            vel[iy] -= pArr[iy] * COHESION;
-            vel[iz] -= pArr[iz] * COHESION;
-
-            // Apply Velocity
+            
+            if (currentMode === "ICE") {
+                // Sucking into Black Hole
+                const dx = spellGroup.position.x - pArr[ix];
+                const dy = spellGroup.position.y - pArr[iy];
+                const dz = spellGroup.position.z - pArr[iz];
+                vel[ix] = dx * 0.05; vel[iy] = dy * 0.05; vel[iz] = dz * 0.05;
+                // Ice Colors
+                cArr[ix] = 0; cArr[iy] = 0.6; cArr[iz] = 1;
+            } else {
+                // Fire Physics (Rising and expanding)
+                vel[ix] = (Math.random()-0.5) * 0.5;
+                vel[iy] += 0.02; // Rise
+                vel[iz] = (Math.random()-0.5) * 0.5;
+                
+                if (pArr[iy] > spellGroup.position.y + 15) {
+                    pArr[ix] = spellGroup.position.x + (Math.random()-0.5)*5;
+                    pArr[iy] = spellGroup.position.y;
+                    pArr[iz] = spellGroup.position.z + (Math.random()-0.5)*5;
+                    vel[iy] = 0;
+                }
+                // Fire Colors
+                cArr[ix] = 1; cArr[iy] = 0.3; cArr[iz] = 0;
+            }
             pArr[ix] += vel[ix]; pArr[iy] += vel[iy]; pArr[iz] += vel[iz];
-            vel[ix] *= FRICTION; vel[iy] *= FRICTION; vel[iz] *= FRICTION;
-
-            // Box Collisions
-            if (Math.abs(pArr[ix]) > h) { pArr[ix] = Math.sign(pArr[ix])*h; vel[ix] *= -0.3; }
-            if (Math.abs(pArr[iy]) > h) { pArr[iy] = Math.sign(pArr[iy])*h; vel[iy] *= -0.3; }
-            if (Math.abs(pArr[iz]) > h) { pArr[iz] = Math.sign(pArr[iz])*h; vel[iz] *= -0.3; }
         }
 
         geometry.attributes.position.needsUpdate = true;
+        geometry.attributes.color.needsUpdate = true;
         renderer.render(scene, camera);
     }
 
     document.getElementById('startBtn').onclick = () => {
-        new Camera(video, {
-            onFrame: async () => { await hands.send({image: video}); },
-            width: 1280, height: 720
-        }).start().then(() => {
-            document.getElementById('btn-container').style.display='none';
-            animate();
-        });
+        new Camera(video, { onFrame: async () => { await hands.send({image: video}); }, width: 1280, height: 720 }).start();
+        document.getElementById('btn-container').style.display='none';
+        animate();
     };
 </script>
 </body>

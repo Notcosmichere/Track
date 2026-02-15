@@ -2,42 +2,25 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Fullscreen Fluid Handheld</title>
+    <title>Fluid Surface Simulation</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Consolas', monospace; }
-        
-        /* Fullscreen Video Background */
-        #input_video { 
-            position: absolute; width: 100%; height: 100%; 
-            object-fit: cover; transform: scaleX(-1); z-index: 1; 
-        }
-        
-        /* Skeleton Layer */
-        #sketch_canvas { 
-            position: absolute; width: 100%; height: 100%; 
-            top: 0; left: 0; transform: scaleX(-1); z-index: 2; 
-        }
-
-        /* 3D Simulation Layer */
-        #three_canvas { 
-            position: absolute; top: 0; left: 0; 
-            width: 100%; height: 100%; z-index: 3; pointer-events: none; 
-        }
-
-        #ui-layer { position: absolute; top: 20px; left: 20px; color: #00ffcc; z-index: 100; text-shadow: 0 0 10px #000; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+        #input_video { position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); z-index: 1; }
+        #sketch_canvas { position: absolute; width: 100%; height: 100%; top: 0; left: 0; transform: scaleX(-1); z-index: 2; }
+        #three_canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
+        #ui-layer { position: absolute; top: 20px; left: 20px; color: #00ffcc; z-index: 100; font-family: 'Courier New', monospace; }
         #btn-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 300; }
-        button { padding: 20px 50px; font-size: 1.5rem; cursor: pointer; background: #00ffcc; border: none; font-weight: bold; border-radius: 8px; }
+        button { padding: 20px 50px; font-size: 1.2rem; cursor: pointer; background: #00ffcc; border: none; font-weight: bold; border-radius: 5px; }
     </style>
 </head>
 <body>
 
 <div id="ui-layer">
-    <h1>KINETIC_TANK_PRO_V5</h1>
-    <div id="status">STATUS: STANDBY</div>
+    <h1>FLUID_LINK_V6</h1>
+    <div id="status">STATUS: CALIBRATING...</div>
 </div>
 
-<div id="btn-container"><button id="startBtn">SYNC NEURAL LINK</button></div>
-
+<div id="btn-container"><button id="startBtn">START FLUID LINK</button></div>
 <video id="input_video" playsinline></video>
 <canvas id="sketch_canvas"></canvas>
 
@@ -47,15 +30,15 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 
 <script>
-    const PARTICLE_COUNT = 6000;
-    const BOX_SIZE = 8; // Smaller, sharper cube
-    const GRAVITY = -0.12;
-    const BOUNCE = -0.4;
+    const PARTICLE_COUNT = 4500; // Lower count with higher cohesion looks more like liquid
+    const BOX_SIZE = 6; // Very small cube
+    const GRAVITY = -0.08;
+    const COHESION = 0.02; // This makes them act like water
+    const FRICTION = 0.96;
 
-    // --- THREE.JS SETUP ---
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-    camera.position.z = 25;
+    camera.position.z = 20;
     
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -65,30 +48,41 @@
     const tankGroup = new THREE.Group();
     scene.add(tankGroup);
 
+    // Box Visual
     const boxMesh = new THREE.LineSegments(
         new THREE.EdgesGeometry(new THREE.BoxGeometry(BOX_SIZE, BOX_SIZE, BOX_SIZE)),
-        new THREE.LineBasicMaterial({ color: 0x00ffcc, linewidth: 2 })
+        new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.5 })
     );
     tankGroup.add(boxMesh);
 
+    // Liquid Visual
     const geometry = new THREE.BufferGeometry();
     const pos = new Float32Array(PARTICLE_COUNT * 3);
     const vel = new Float32Array(PARTICLE_COUNT * 3);
-    const col = new Float32Array(PARTICLE_COUNT * 3);
 
     for(let i=0; i<PARTICLE_COUNT; i++) {
         pos[i*3] = (Math.random()-0.5) * BOX_SIZE;
         pos[i*3+1] = (Math.random()-0.5) * BOX_SIZE;
         pos[i*3+2] = (Math.random()-0.5) * BOX_SIZE;
-        col[i*3]=0; col[i*3+1]=1; col[i*3+2]=0.8; 
     }
 
     geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geometry.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    const points = new THREE.Points(geometry, new THREE.PointsMaterial({ size: 0.15, vertexColors: true }));
-    tankGroup.add(points);
+    
+    // Texture for "Blurry/Fluid" particles
+    const sprite = new THREE.TextureLoader().load('https://threejs.org/examples/textures/sprites/disc.png');
+    const material = new THREE.PointsMaterial({ 
+        size: 0.5, 
+        color: 0x00d4ff, 
+        map: sprite, 
+        transparent: true, 
+        alphaTest: 0.01, 
+        blending: THREE.AdditiveBlending 
+    });
+    
+    const liquid = new THREE.Points(geometry, material);
+    tankGroup.add(liquid);
 
-    // --- TRACKING ENGINE ---
+    // Tracking
     const video = document.getElementById('input_video');
     const canvas = document.getElementById('sketch_canvas');
     const ctx = canvas.getContext('2d');
@@ -96,43 +90,28 @@
     let lastTankPos = new THREE.Vector3(0, 0, 0);
 
     const hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
-    hands.setOptions({ 
-        maxNumHands: 1, 
-        modelComplexity: 1, // Higher precision
-        minDetectionConfidence: 0.7, 
-        minTrackingConfidence: 0.7 
-    });
+    hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.8, minTrackingConfidence: 0.8 });
 
     hands.onResults((res) => {
-        // Ensure canvas matches video feed exactly
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
         if (res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
             const lm = res.multiHandLandmarks[0];
+            drawConnectors(ctx, lm, HAND_CONNECTIONS, {color: '#00FFCC', lineWidth: 4});
             
-            // DRAW THE SKELETON (Neon Cyan)
-            window.drawConnectors(ctx, lm, HAND_CONNECTIONS, {color: '#00FFCC', lineWidth: 5});
-            window.drawLandmarks(ctx, lm, {color: '#FFFFFF', radius: 2});
-            
-            // Use Middle Finger MCP (Palm center) to position cube
-            const palm = lm[9];
-            // Scale mapping to screen size
-            targetPos.set((palm.x - 0.5) * -35, (palm.y - 0.5) * -25, (palm.z * -40));
-            document.getElementById('status').innerText = "SYSTEM: CONNECTED";
-        } else {
-            document.getElementById('status').innerText = "SYSTEM: SEARCHING FOR SUBJECT...";
+            const palm = lm[9]; // Hand center
+            targetPos.set((palm.x - 0.5) * -30, (palm.y - 0.5) * -20, (palm.z * -30));
+            document.getElementById('status').innerText = "STATUS: HAND LOCKED";
         }
     });
 
     function animate() {
         requestAnimationFrame(animate);
         
-        // Cube follows hand with smooth lerp
         tankGroup.position.lerp(targetPos, 0.2);
-        
-        const inertia = new THREE.Vector3().subVectors(tankGroup.position, lastTankPos);
+        const deltaMove = new THREE.Vector3().subVectors(tankGroup.position, lastTankPos);
         lastTankPos.copy(tankGroup.position);
 
         const pArr = geometry.attributes.position.array;
@@ -140,19 +119,28 @@
 
         for(let i=0; i<PARTICLE_COUNT; i++) {
             const ix = i*3, iy = i*3+1, iz = i*3+2;
+
+            // Gravity
             vel[iy] += GRAVITY;
 
-            // Apply inertia from cube movement
-            vel[ix] -= inertia.x * 0.4;
-            vel[iy] -= inertia.y * 0.4;
-            vel[iz] -= inertia.z * 0.4;
+            // Slosh Force (Inertia)
+            vel[ix] -= deltaMove.x * 0.5;
+            vel[iy] -= deltaMove.y * 0.5;
+            vel[iz] -= deltaMove.z * 0.5;
 
+            // Simple Cohesion (Pull toward center of mass slightly)
+            vel[ix] -= pArr[ix] * COHESION;
+            vel[iy] -= pArr[iy] * COHESION;
+            vel[iz] -= pArr[iz] * COHESION;
+
+            // Apply Velocity
             pArr[ix] += vel[ix]; pArr[iy] += vel[iy]; pArr[iz] += vel[iz];
+            vel[ix] *= FRICTION; vel[iy] *= FRICTION; vel[iz] *= FRICTION;
 
             // Box Collisions
-            if (Math.abs(pArr[ix]) > h) { pArr[ix] = Math.sign(pArr[ix])*h; vel[ix] *= BOUNCE; }
-            if (Math.abs(pArr[iy]) > h) { pArr[iy] = Math.sign(pArr[iy])*h; vel[iy] *= BOUNCE; }
-            if (Math.abs(pArr[iz]) > h) { pArr[iz] = Math.sign(pArr[iz])*h; vel[iz] *= BOUNCE; }
+            if (Math.abs(pArr[ix]) > h) { pArr[ix] = Math.sign(pArr[ix])*h; vel[ix] *= -0.3; }
+            if (Math.abs(pArr[iy]) > h) { pArr[iy] = Math.sign(pArr[iy])*h; vel[iy] *= -0.3; }
+            if (Math.abs(pArr[iz]) > h) { pArr[iz] = Math.sign(pArr[iz])*h; vel[iz] *= -0.3; }
         }
 
         geometry.attributes.position.needsUpdate = true;
@@ -160,21 +148,14 @@
     }
 
     document.getElementById('startBtn').onclick = () => {
-        const cam = new Camera(video, {
+        new Camera(video, {
             onFrame: async () => { await hands.send({image: video}); },
             width: 1280, height: 720
-        });
-        cam.start().then(() => {
+        }).start().then(() => {
             document.getElementById('btn-container').style.display='none';
             animate();
         });
     };
-
-    window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    });
 </script>
 </body>
 </html>

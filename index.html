@@ -2,233 +2,167 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Fluid Particle Simulation</title>
+    <title>Fluid Sim - Compact Edition</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Consolas', monospace; }
         
-        /* TECHNICAL UI OVERLAY */
         #ui-layer { 
             position: absolute; top: 20px; left: 20px; color: #ff3300; 
-            z-index: 100; pointer-events: none; font-size: 14px;
+            z-index: 100; pointer-events: none;
         }
-        h1 { margin: 0; font-size: 1.5rem; border-left: 4px solid #ff3300; padding-left: 10px; }
-        .param { margin-top: 5px; opacity: 0.8; }
-        
-        /* WEBCAM & CANVAS */
+
+        /* Small Debug Box */
         #debug-box { 
             position: absolute; bottom: 20px; right: 20px; 
-            width: 200px; height: 150px; 
-            border: 1px solid #333; border-radius: 4px; 
-            overflow: hidden; z-index: 200; opacity: 0.8;
+            width: 240px; height: 180px; 
+            border: 2px solid #ff3300; border-radius: 8px; 
+            overflow: hidden; z-index: 200; background: #000;
         }
         #input_video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        #sketch_canvas { 
+            position: absolute; top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            transform: scaleX(-1); z-index: 201; /* Layered on top */
+        }
         
         #btn-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 300; }
         button { 
             padding: 15px 40px; font-size: 1.2rem; cursor: pointer; 
-            background: rgba(20, 0, 0, 0.9); color: #ff3300; border: 1px solid #ff3300; 
+            background: #111; color: #ff3300; border: 1px solid #ff3300; 
             font-family: 'Consolas', monospace; text-transform: uppercase;
-            box-shadow: 0 0 15px rgba(255, 51, 0, 0.3);
         }
-        button:hover { background: #ff3300; color: #000; }
     </style>
 </head>
 <body>
 
 <div id="ui-layer">
-    <h1>FLUID_SIM_V1.0</h1>
-    <div class="param">PARTICLES: 4000</div>
-    <div class="param">VISCOSITY: 0.96</div>
-    <div class="param">GRAVITY: -9.8 m/s²</div>
-    <div class="param">HAND_TRACKING: ACTIVE</div>
+    <h1>FLUID_SIM_V2.0</h1>
+    <div id="status">STATUS: STANDBY</div>
 </div>
 
-<div id="btn-container"><button id="startBtn">INJECT FLUID</button></div>
+<div id="btn-container"><button id="startBtn">INITIALIZE</button></div>
 
 <div id="debug-box">
     <video id="input_video" playsinline></video>
+    <canvas id="sketch_canvas"></canvas>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 
 <script>
-    // --- CONFIGURATION ---
-    const PARTICLE_COUNT = 4000;
-    const BOX_SIZE = 40;
-    const GRAVITY = -0.15;
-    const BOUNCE = -0.6; // Energy lost when hitting wall (0 to -1)
-    const HAND_RADIUS = 8;
-    const HAND_FORCE = 0.8;
+    const PARTICLE_COUNT = 5000;
+    const BOX_SIZE = 25; // Smaller, more compact cube
+    const GRAVITY = -0.12;
+    const BOUNCE = -0.5;
 
-    // --- THREE.JS SETUP ---
+    // --- THREE.JS ---
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-    camera.position.z = 60;
-    camera.position.y = 10;
+    camera.position.z = 45; // Adjusted zoom for smaller cube
     
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // --- CREATE THE CONTAINER BOX (WIREFRAME) ---
     const boxGeo = new THREE.BoxGeometry(BOX_SIZE, BOX_SIZE, BOX_SIZE);
     const boxEdges = new THREE.EdgesGeometry(boxGeo);
-    const boxMat = new THREE.LineBasicMaterial({ color: 0x441111 }); // Dark Red Lines
-    const boxMesh = new THREE.LineSegments(boxEdges, boxMat);
+    const boxMesh = new THREE.LineSegments(boxEdges, new THREE.LineBasicMaterial({ color: 0xff3300 }));
     scene.add(boxMesh);
 
-    // --- CREATE PARTICLES ---
     const geometry = new THREE.BufferGeometry();
     const pos = new Float32Array(PARTICLE_COUNT * 3);
-    const vel = new Float32Array(PARTICLE_COUNT * 3); // Velocity
+    const vel = new Float32Array(PARTICLE_COUNT * 3);
     const col = new Float32Array(PARTICLE_COUNT * 3);
 
     for(let i=0; i<PARTICLE_COUNT; i++) {
-        // Start particles in a random clump inside the box
-        pos[i*3] = (Math.random()-0.5) * (BOX_SIZE - 2);
-        pos[i*3+1] = (Math.random()-0.5) * (BOX_SIZE - 2);
-        pos[i*3+2] = (Math.random()-0.5) * (BOX_SIZE - 2);
-        
-        // Initial Velocity
-        vel[i*3] = (Math.random()-0.5) * 0.5;
-        vel[i*3+1] = (Math.random()-0.5) * 0.5;
-        vel[i*3+2] = (Math.random()-0.5) * 0.5;
-
-        // Color: Fire Red/Orange
-        col[i*3] = 1.0; 
-        col[i*3+1] = 0.2 + Math.random()*0.3; 
-        col[i*3+2] = 0.0;
+        pos[i*3] = (Math.random()-0.5) * BOX_SIZE;
+        pos[i*3+1] = (Math.random()-0.5) * BOX_SIZE;
+        pos[i*3+2] = (Math.random()-0.5) * BOX_SIZE;
+        col[i*3]=1; col[i*3+1]=0.1; col[i*3+2]=0;
     }
 
     geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const points = new THREE.Points(geometry, new THREE.PointsMaterial({ size: 0.4, vertexColors: true }));
+    scene.add(points);
 
-    const material = new THREE.PointsMaterial({
-        size: 0.6,
-        vertexColors: true,
-        blending: THREE.AdditiveBlending,
-        transparent: true,
-        opacity: 0.8
-    });
-
-    const particles = new THREE.Points(geometry, material);
-    scene.add(particles);
-
-    // --- HAND TRACKING VARIABLES ---
-    let handPos = new THREE.Vector3(1000, 1000, 1000); // Start far away
-    let isTracking = false;
-
-    // --- PHYSICS LOOP ---
-    function updatePhysics() {
-        const positions = geometry.attributes.position.array;
-        
-        for(let i=0; i<PARTICLE_COUNT; i++) {
-            const ix = i*3;
-            const iy = i*3+1;
-            const iz = i*3+2;
-
-            // 1. APPLY GRAVITY
-            vel[iy] += GRAVITY;
-
-            // 2. HAND INTERACTION (Repulsion)
-            // We calculate distance between particle and hand
-            const dx = positions[ix] - handPos.x;
-            const dy = positions[iy] - handPos.y;
-            const dz = positions[iz] - handPos.z;
-            const distSq = dx*dx + dy*dy + dz*dz;
-
-            if(distSq < HAND_RADIUS * HAND_RADIUS) {
-                const dist = Math.sqrt(distSq);
-                const force = (HAND_RADIUS - dist) / HAND_RADIUS; // Stronger closer to center
-                
-                // Push particle away
-                vel[ix] += (dx / dist) * force * HAND_FORCE;
-                vel[iy] += (dy / dist) * force * HAND_FORCE;
-                vel[iz] += (dz / dist) * force * HAND_FORCE;
-            }
-
-            // 3. APPLY VELOCITY
-            positions[ix] += vel[ix];
-            positions[iy] += vel[iy];
-            positions[iz] += vel[iz];
-
-            // 4. BOUNDARY COLLISION (The Box)
-            const halfBox = BOX_SIZE / 2;
-            const damp = 0.9; // Friction against walls
-
-            // X Walls
-            if (positions[ix] > halfBox) { positions[ix] = halfBox; vel[ix] *= BOUNCE; }
-            if (positions[ix] < -halfBox) { positions[ix] = -halfBox; vel[ix] *= BOUNCE; }
-
-            // Y Walls (Floor/Ceiling)
-            if (positions[iy] > halfBox) { positions[iy] = halfBox; vel[iy] *= BOUNCE; }
-            if (positions[iy] < -halfBox) { 
-                positions[iy] = -halfBox; 
-                vel[iy] *= BOUNCE; 
-                // Friction on floor
-                vel[ix] *= 0.95; 
-                vel[iz] *= 0.95; 
-            }
-
-            // Z Walls
-            if (positions[iz] > halfBox) { positions[iz] = halfBox; vel[iz] *= BOUNCE; }
-            if (positions[iz] < -halfBox) { positions[iz] = -halfBox; vel[iz] *= BOUNCE; }
-        }
-        
-        geometry.attributes.position.needsUpdate = true;
-    }
-
-    // --- MEDIA PIPE SETUP ---
+    // --- HANDS & SKELETON ---
     const videoElement = document.getElementById('input_video');
+    const canvasElement = document.getElementById('sketch_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    let handTarget = new THREE.Vector3(1000, 1000, 1000);
+
     const hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
     hands.setOptions({ maxNumHands: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
 
-    hands.onResults((results) => {
-        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-            isTracking = true;
-            const lm = results.multiHandLandmarks[0];
-            const indexTip = lm[8]; // Index Finger Tip
-
-            // Map 2D video coordinates to 3D scene coordinates
-            // This is an approximation to make the hand feel "inside" the box
-            const x = (indexTip.x - 0.5) * -1 * (BOX_SIZE * 2); // Flip X
-            const y = (indexTip.y - 0.5) * -1 * (BOX_SIZE * 2) + 10; // Offset Y
+    hands.onResults((res) => {
+        canvasElement.width = videoElement.videoWidth;
+        canvasElement.height = videoElement.videoHeight;
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        
+        if (res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
+            const lm = res.multiHandLandmarks[0];
             
-            // For Z depth, we use the size of the hand (wrist to middle finger) to guess depth
-            // or just map a simple slider. Here we fix it to the middle plane for simplicity
-            // or allow slight movement.
-            const z = 0; 
+            // Draw Skeleton
+            window.drawConnectors(canvasCtx, lm, HAND_CONNECTIONS, {color: '#00FFCC', lineWidth: 4});
+            window.drawLandmarks(canvasCtx, lm, {color: '#FF3300', radius: 3});
 
-            // Smoothly move hand position
-            handPos.lerp(new THREE.Vector3(x, y, z), 0.2);
+            // Map Index Finger to 3D Space
+            const tip = lm[8];
+            handTarget.set((tip.x - 0.5) * -BOX_SIZE * 2, (tip.y - 0.5) * -BOX_SIZE * 2, 0);
+            document.getElementById('status').innerText = "STATUS: TRACKING";
         } else {
-            isTracking = false;
-            handPos.set(1000,1000,1000); // Hide hand force
+            handTarget.set(1000, 1000, 1000);
+            document.getElementById('status').innerText = "STATUS: SEARCHING";
         }
     });
 
-    document.getElementById('startBtn').onclick = () => {
-        const cam = new Camera(videoElement, {
-            onFrame: async () => { await hands.send({image: videoElement}); },
-            width: 640, height: 480
-        });
-        cam.start().then(() => document.getElementById('btn-container').style.display='none');
-    };
-
-    // --- RENDER LOOP ---
+    // --- PHYSICS & ANIMATION ---
     function animate() {
         requestAnimationFrame(animate);
-        updatePhysics();
-        
-        // Slowly rotate the whole box for cinematic effect
-        scene.rotation.y = Math.sin(Date.now() * 0.0005) * 0.2;
-        
+        const pArr = geometry.attributes.position.array;
+        const half = BOX_SIZE / 2;
+
+        for(let i=0; i<PARTICLE_COUNT; i++) {
+            const ix = i*3, iy = i*3+1, iz = i*3+2;
+
+            vel[iy] += GRAVITY;
+
+            // Simple hand repulsion
+            const dx = pArr[ix] - handTarget.x;
+            const dy = pArr[iy] - handTarget.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if(dist < 5) {
+                vel[ix] += (dx/dist) * 0.5;
+                vel[iy] += (dy/dist) * 0.5;
+            }
+
+            pArr[ix] += vel[ix]; pArr[iy] += vel[iy]; pArr[iz] += vel[iz];
+
+            // Boundaries
+            if (Math.abs(pArr[ix]) > half) { pArr[ix] = Math.sign(pArr[ix]) * half; vel[ix] *= BOUNCE; }
+            if (pArr[iy] < -half) { pArr[iy] = -half; vel[iy] *= BOUNCE; vel[ix] *= 0.9; }
+            if (pArr[iy] > half) { pArr[iy] = half; vel[iy] *= BOUNCE; }
+            if (Math.abs(pArr[iz]) > half) { pArr[iz] = Math.sign(pArr[iz]) * half; vel[iz] *= BOUNCE; }
+        }
+
+        geometry.attributes.position.needsUpdate = true;
+        scene.rotation.y += 0.005;
         renderer.render(scene, camera);
     }
-    animate();
 
+    document.getElementById('startBtn').onclick = () => {
+        new Camera(videoElement, {
+            onFrame: async () => { await hands.send({image: videoElement}); },
+            width: 640, height: 480
+        }).start().then(() => {
+            document.getElementById('btn-container').style.display='none';
+            animate();
+        });
+    };
 </script>
 </body>
 </html>

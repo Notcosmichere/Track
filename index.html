@@ -2,45 +2,32 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Fluid Sim - Compact Edition</title>
+    <title>Fluid Wave Simulation</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Consolas', monospace; }
+        #ui-layer { position: absolute; top: 20px; left: 20px; color: #00ffcc; z-index: 100; pointer-events: none; }
         
-        #ui-layer { 
-            position: absolute; top: 20px; left: 20px; color: #ff3300; 
-            z-index: 100; pointer-events: none;
-        }
-
-        /* Small Debug Box */
         #debug-box { 
             position: absolute; bottom: 20px; right: 20px; 
-            width: 240px; height: 180px; 
-            border: 2px solid #ff3300; border-radius: 8px; 
-            overflow: hidden; z-index: 200; background: #000;
+            width: 280px; height: 210px; 
+            border: 2px solid #00ffcc; border-radius: 8px; 
+            background: #000; z-index: 200;
         }
         #input_video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-        #sketch_canvas { 
-            position: absolute; top: 0; left: 0; 
-            width: 100%; height: 100%; 
-            transform: scaleX(-1); z-index: 201; /* Layered on top */
-        }
+        #sketch_canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); z-index: 201; }
         
         #btn-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 300; }
-        button { 
-            padding: 15px 40px; font-size: 1.2rem; cursor: pointer; 
-            background: #111; color: #ff3300; border: 1px solid #ff3300; 
-            font-family: 'Consolas', monospace; text-transform: uppercase;
-        }
+        button { padding: 15px 40px; font-size: 1.2rem; cursor: pointer; background: #00ffcc; border: none; font-weight: bold; border-radius: 4px; }
     </style>
 </head>
 <body>
 
 <div id="ui-layer">
-    <h1>FLUID_SIM_V2.0</h1>
-    <div id="status">STATUS: STANDBY</div>
+    <h1>HYDRO_WAVE_V3.0</h1>
+    <div id="status">STATUS: INITIALIZING...</div>
 </div>
 
-<div id="btn-container"><button id="startBtn">INITIALIZE</button></div>
+<div id="btn-container"><button id="startBtn">START SIMULATION</button></div>
 
 <div id="debug-box">
     <video id="input_video" playsinline></video>
@@ -53,25 +40,27 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 
 <script>
-    const PARTICLE_COUNT = 5000;
-    const BOX_SIZE = 25; // Smaller, more compact cube
-    const GRAVITY = -0.12;
-    const BOUNCE = -0.5;
+    const PARTICLE_COUNT = 12000; // Increased for "Wave" density
+    const BOX_SIZE = 22; 
+    const GRAVITY = -0.1;
+    const BOUNCE = -0.4; // Softer bounce for liquid feel
 
-    // --- THREE.JS ---
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-    camera.position.z = 45; // Adjusted zoom for smaller cube
+    camera.position.z = 40;
     
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    const boxGeo = new THREE.BoxGeometry(BOX_SIZE, BOX_SIZE, BOX_SIZE);
-    const boxEdges = new THREE.EdgesGeometry(boxGeo);
-    const boxMesh = new THREE.LineSegments(boxEdges, new THREE.LineBasicMaterial({ color: 0xff3300 }));
+    // Cube
+    const boxMesh = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(BOX_SIZE, BOX_SIZE, BOX_SIZE)),
+        new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.3 })
+    );
     scene.add(boxMesh);
 
+    // Particles
     const geometry = new THREE.BufferGeometry();
     const pos = new Float32Array(PARTICLE_COUNT * 3);
     const vel = new Float32Array(PARTICLE_COUNT * 3);
@@ -79,86 +68,90 @@
 
     for(let i=0; i<PARTICLE_COUNT; i++) {
         pos[i*3] = (Math.random()-0.5) * BOX_SIZE;
-        pos[i*3+1] = (Math.random()-0.5) * BOX_SIZE;
+        pos[i*3+1] = (Math.random()*BOX_SIZE) - (BOX_SIZE/2);
         pos[i*3+2] = (Math.random()-0.5) * BOX_SIZE;
-        col[i*3]=1; col[i*3+1]=0.1; col[i*3+2]=0;
+        // Cyan to Blue Gradient
+        col[i*3]=0; col[i*3+1]=0.8; col[i*3+2]=1.0; 
     }
 
     geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    const points = new THREE.Points(geometry, new THREE.PointsMaterial({ size: 0.4, vertexColors: true }));
+    const material = new THREE.PointsMaterial({ size: 0.25, vertexColors: true, blending: THREE.AdditiveBlending });
+    const points = new THREE.Points(geometry, material);
     scene.add(points);
 
-    // --- HANDS & SKELETON ---
-    const videoElement = document.getElementById('input_video');
-    const canvasElement = document.getElementById('sketch_canvas');
-    const canvasCtx = canvasElement.getContext('2d');
-    let handTarget = new THREE.Vector3(1000, 1000, 1000);
+    // Tracking Setup
+    const video = document.getElementById('input_video');
+    const canvas = document.getElementById('sketch_canvas');
+    const ctx = canvas.getContext('2d');
+    let handPos = new THREE.Vector3(1000, 1000, 1000);
 
     const hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
-    hands.setOptions({ maxNumHands: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
+    hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
 
     hands.onResults((res) => {
-        canvasElement.width = videoElement.videoWidth;
-        canvasElement.height = videoElement.videoHeight;
-        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         
         if (res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
             const lm = res.multiHandLandmarks[0];
-            
-            // Draw Skeleton
-            window.drawConnectors(canvasCtx, lm, HAND_CONNECTIONS, {color: '#00FFCC', lineWidth: 4});
-            window.drawLandmarks(canvasCtx, lm, {color: '#FF3300', radius: 3});
+            // Fix: Explicitly draw the skeleton
+            drawConnectors(ctx, lm, HAND_CONNECTIONS, {color: '#00FFCC', lineWidth: 3});
+            drawLandmarks(ctx, lm, {color: '#FFFFFF', radius: 2});
 
-            // Map Index Finger to 3D Space
+            // Map index finger (tip is index 8)
             const tip = lm[8];
-            handTarget.set((tip.x - 0.5) * -BOX_SIZE * 2, (tip.y - 0.5) * -BOX_SIZE * 2, 0);
-            document.getElementById('status').innerText = "STATUS: TRACKING";
+            handPos.set((tip.x - 0.5) * -BOX_SIZE * 2, (tip.y - 0.5) * -BOX_SIZE * 2, 0);
+            document.getElementById('status').innerText = "STATUS: TRACKING ACTIVE";
         } else {
-            handTarget.set(1000, 1000, 1000);
-            document.getElementById('status').innerText = "STATUS: SEARCHING";
+            handPos.set(1000, 1000, 1000);
+            document.getElementById('status').innerText = "STATUS: SEARCHING FOR HAND...";
         }
     });
 
-    // --- PHYSICS & ANIMATION ---
     function animate() {
         requestAnimationFrame(animate);
         const pArr = geometry.attributes.position.array;
-        const half = BOX_SIZE / 2;
+        const h = BOX_SIZE / 2;
 
         for(let i=0; i<PARTICLE_COUNT; i++) {
             const ix = i*3, iy = i*3+1, iz = i*3+2;
 
             vel[iy] += GRAVITY;
 
-            // Simple hand repulsion
-            const dx = pArr[ix] - handTarget.x;
-            const dy = pArr[iy] - handTarget.y;
+            // WAVE PHYSICS: Check distance to hand
+            const dx = pArr[ix] - handPos.x;
+            const dy = pArr[iy] - handPos.y;
             const dist = Math.sqrt(dx*dx + dy*dy);
-            if(dist < 5) {
-                vel[ix] += (dx/dist) * 0.5;
-                vel[iy] += (dy/dist) * 0.5;
+            
+            if(dist < 7) {
+                const force = (7 - dist) / 7;
+                vel[ix] += (dx/dist) * force * 0.8;
+                vel[iy] += (dy/dist) * force * 0.8;
             }
 
+            // Movement
             pArr[ix] += vel[ix]; pArr[iy] += vel[iy]; pArr[iz] += vel[iz];
 
             // Boundaries
-            if (Math.abs(pArr[ix]) > half) { pArr[ix] = Math.sign(pArr[ix]) * half; vel[ix] *= BOUNCE; }
-            if (pArr[iy] < -half) { pArr[iy] = -half; vel[iy] *= BOUNCE; vel[ix] *= 0.9; }
-            if (pArr[iy] > half) { pArr[iy] = half; vel[iy] *= BOUNCE; }
-            if (Math.abs(pArr[iz]) > half) { pArr[iz] = Math.sign(pArr[iz]) * half; vel[iz] *= BOUNCE; }
+            if (Math.abs(pArr[ix]) > h) { pArr[ix] = Math.sign(pArr[ix])*h; vel[ix] *= BOUNCE; }
+            if (pArr[iy] < -h) { pArr[iy] = -h; vel[iy] *= BOUNCE; vel[ix] *= 0.95; vel[iz] *= 0.95; }
+            if (pArr[iy] > h) { pArr[iy] = h; vel[iy] *= BOUNCE; }
+            if (Math.abs(pArr[iz]) > h) { pArr[iz] = Math.sign(pArr[iz])*h; vel[iz] *= BOUNCE; }
         }
 
         geometry.attributes.position.needsUpdate = true;
-        scene.rotation.y += 0.005;
+        scene.rotation.y += 0.003;
         renderer.render(scene, camera);
     }
 
     document.getElementById('startBtn').onclick = () => {
-        new Camera(videoElement, {
-            onFrame: async () => { await hands.send({image: videoElement}); },
+        const cam = new Camera(video, {
+            onFrame: async () => { await hands.send({image: video}); },
             width: 640, height: 480
-        }).start().then(() => {
+        });
+        cam.start().then(() => {
             document.getElementById('btn-container').style.display='none';
             animate();
         });
